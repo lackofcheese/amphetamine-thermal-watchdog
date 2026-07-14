@@ -1,0 +1,37 @@
+#!/bin/zsh
+set -euo pipefail
+
+label="com.lackofcheese.amphetamine-thermal-watchdog"
+domain="gui/$(id -u)"
+binary="$HOME/.local/bin/amphetamine-thermal-watchdog"
+latch="$HOME/Library/Application Support/AmphetamineThermalGuard/tripped"
+log="$HOME/Library/Logs/AmphetamineThermalWatchdog.log"
+
+case "${1:-status}" in
+  status)
+    launchctl print "$domain/$label" | sed -n '1,45p'
+    if [[ -f "$latch" ]]; then
+      echo ""
+      echo "TRIPPED: $(<"$latch")"
+    else
+      echo ""
+      echo "Trip latch: clear"
+    fi
+    ;;
+  reset)
+    rm -f "$latch"
+    launchctl kickstart -k "$domain/$label"
+    echo "Thermal guard reset and running."
+    ;;
+  test)
+    "$binary" --once --ignore-trip-latch --simulate-thermal serious --no-sleep
+    echo "Simulated trip complete; run '$0 reset' to re-arm."
+    ;;
+  logs)
+    tail -n "${2:-30}" "$log"
+    ;;
+  *)
+    echo "Usage: $0 {status|reset|test|logs [lines]}" >&2
+    exit 2
+    ;;
+esac

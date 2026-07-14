@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.lackofcheese.amphetamine-thermal-watchdog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@HOME@/.local/bin/amphetamine-thermal-watchdog</string>
+        <string>--battery-cutoff-c</string>
+        <string>40</string>
+        <string>--poll-seconds</string>
+        <string>15</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>StandardOutPath</key>
+    <string>@HOME@/Library/Logs/AmphetamineThermalWatchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>@HOME@/Library/Logs/AmphetamineThermalWatchdog.log</string>
+</dict>
+</plist>
