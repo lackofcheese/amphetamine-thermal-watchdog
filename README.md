@@ -1,5 +1,10 @@
 # Amphetamine Thermal Watchdog
 
+> [!NOTE]
+> **AI-developed project.** The initial version of this project was designed,
+> implemented, tested, and documented by OpenAI Codex using the **GPT-5.6 Sol**
+> model, under the direction and review of Dimitri Klimenko.
+
 A small native macOS menu-bar watchdog that adds a thermal safety cutoff to
 [Amphetamine](https://apps.apple.com/app/amphetamine/id937984704).
 
@@ -106,6 +111,18 @@ the log unless invoked directly with `scripts/uninstall.sh --purge-log`.
 
 The cutoff is intentionally one-way: it never restarts Amphetamine or clears a
 trip automatically.
+
+## Development provenance
+
+The initial watchdog, menu-bar interface, installation tooling, tests, and
+documentation were developed by **OpenAI Codex (GPT-5.6 Sol)** in collaboration
+with Dimitri Klimenko. Dimitri supplied the requirements, directed the work,
+performed the physical closed-lid testing, reviewed the behavior, and made the
+publication decisions.
+
+This attribution describes the initial project history. Future contributions
+may be human- or AI-authored and should identify their own provenance where
+appropriate.
 
 ## License
 
