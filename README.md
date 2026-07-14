@@ -53,7 +53,10 @@ make install
 ```
 
 The installer builds the native executable, installs a per-user LaunchAgent,
-and starts it immediately. Installed paths are:
+and starts it immediately. It also replaces the earlier
+`com.lackofcheese.amphetamine-thermal-guard` manual installation, if present,
+so only one watchdog and one menu-bar icon remain active. The legacy log and
+trip latch are preserved. Installed paths are:
 
 - `~/.local/bin/amphetamine-thermal-watchdog`
 - `~/.local/bin/amphetamine-thermal-watchdogctl`

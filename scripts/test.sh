@@ -25,4 +25,7 @@ rendered_plist="$tmp_home/guard.plist"
 sed "s|@HOME@|$tmp_home|g" LaunchAgents/com.lackofcheese.amphetamine-thermal-watchdog.plist.in > "$rendered_plist"
 plutil -lint "$rendered_plist" >/dev/null
 
+grep -q 'legacy_label="com.lackofcheese.amphetamine-thermal-guard"' scripts/install.sh
+grep -q 'launchctl bootout "$domain/$legacy_label"' scripts/install.sh
+
 echo "All non-destructive tests passed."
