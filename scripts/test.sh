@@ -27,5 +27,13 @@ plutil -lint "$rendered_plist" >/dev/null
 
 grep -q 'legacy_label="com.lackofcheese.amphetamine-thermal-guard"' scripts/install.sh
 grep -q 'launchctl bootout "$domain/$legacy_label"' scripts/install.sh
+! grep -q -- '--battery-cutoff-c' LaunchAgents/com.lackofcheese.amphetamine-thermal-watchdog.plist.in
+
+cutoff_output="$(scripts/amphetamine-thermal-watchdogctl cutoff)"
+[[ "$cutoff_output" == *"Battery cutoff:"* ]]
+if scripts/amphetamine-thermal-watchdogctl cutoff 50.1 >/dev/null 2>&1; then
+  echo "Out-of-range cutoff was incorrectly accepted." >&2
+  exit 1
+fi
 
 echo "All non-destructive tests passed."

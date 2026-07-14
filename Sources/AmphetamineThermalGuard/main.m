@@ -1,17 +1,25 @@
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+#include <math.h>
 
 static double batteryCutoffC = 40.0;
+static const double minimumConfigurableCutoffC = 35.0;
+static const double maximumConfigurableCutoffC = 50.0;
 static double pollSeconds = 15.0;
 static BOOL runOnce = NO;
 static BOOL dryRun = NO;
 static BOOL noSleep = NO;
 static BOOL ignoreTripLatch = NO;
+static BOOL commandLineCutoffSpecified = NO;
 static NSInteger simulatedThermalState = -1;
 static NSURL *tripLatch;
+static NSUserDefaults *settings;
+static NSString *const settingsDomain = @"com.lackofcheese.amphetamine-thermal-watchdog";
+static NSString *const batteryCutoffKey = @"BatteryCutoffC";
 static NSStatusItem *statusItem;
 static NSMenuItem *thermalMenuItem;
 static NSMenuItem *batteryMenuItem;
+static NSMenuItem *cutoffMenuItem;
 static NSMenuItem *latchMenuItem;
 static NSString *latestThermalName = @"starting";
 static NSString *latestBatteryText = @"checking…";
@@ -19,6 +27,8 @@ static NSString *latestBatteryText = @"checking…";
 @interface GuardMenuController : NSObject
 - (void)openLog:(id)sender;
 - (void)resetLatch:(id)sender;
+- (void)setPresetCutoff:(NSMenuItem *)sender;
+- (void)setCustomCutoff:(id)sender;
 @end
 
 static GuardMenuController *menuController;
@@ -66,6 +76,34 @@ static NSString *ThermalStateName(NSProcessInfoThermalState state) {
     return [NSString stringWithFormat:@"unknown(%ld)", (long)state];
 }
 
+static BOOL IsConfigurableCutoff(double value) {
+    return isfinite(value) && value >= minimumConfigurableCutoffC && value <= maximumConfigurableCutoffC;
+}
+
+static void UpdateCutoffMenu(void) {
+    cutoffMenuItem.title = [NSString stringWithFormat:@"Battery cutoff: %.1f°C", batteryCutoffC];
+    for (NSMenuItem *item in cutoffMenuItem.submenu.itemArray) {
+        NSNumber *preset = item.representedObject;
+        item.state = preset && fabs(preset.doubleValue - batteryCutoffC) < 0.01 ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+}
+
+static void StoreCutoff(double value, NSString *source) {
+    batteryCutoffC = value;
+    [settings setDouble:value forKey:batteryCutoffKey];
+    [settings synchronize];
+    Log([NSString stringWithFormat:@"Battery cutoff changed to %.1fC via %@", value, source]);
+    UpdateCutoffMenu();
+}
+
+static void ReloadStoredCutoff(void) {
+    if (commandLineCutoffSpecified) return;
+    NSNumber *stored = [settings objectForKey:batteryCutoffKey];
+    if (stored && IsConfigurableCutoff(stored.doubleValue)) {
+        batteryCutoffC = stored.doubleValue;
+    }
+}
+
 static void UpdateMenuBar(NSProcessInfoThermalState state, NSNumber *batteryC) {
     latestThermalName = ThermalStateName(state);
     latestBatteryText = batteryC ? [NSString stringWithFormat:@"%.1f°C", batteryC.doubleValue] : @"unavailable";
@@ -89,6 +127,7 @@ static void UpdateMenuBar(NSProcessInfoThermalState state, NSNumber *batteryC) {
     statusItem.button.toolTip = [NSString stringWithFormat:@"Thermal watchdog: %@, battery %@", latestThermalName, latestBatteryText];
     thermalMenuItem.title = [NSString stringWithFormat:@"System thermal state: %@", latestThermalName];
     batteryMenuItem.title = [NSString stringWithFormat:@"Battery temperature: %@", latestBatteryText];
+    UpdateCutoffMenu();
     BOOL latched = [[NSFileManager defaultManager] fileExistsAtPath:tripLatch.path];
     latchMenuItem.title = latched ? @"Reset thermal trip latch" : @"Trip latch: armed";
     latchMenuItem.enabled = latched;
@@ -113,6 +152,43 @@ static void UpdateMenuBar(NSProcessInfoThermalState state, NSNumber *batteryC) {
     latchMenuItem.title = @"Trip latch: armed";
     latchMenuItem.enabled = NO;
 }
+
+- (void)setPresetCutoff:(NSMenuItem *)sender {
+    NSNumber *preset = sender.representedObject;
+    StoreCutoff(preset.doubleValue, @"menu preset");
+}
+
+- (void)setCustomCutoff:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Set battery temperature cutoff";
+    alert.informativeText = @"Enter a value from 35°C to 50°C. Values above 45°C are not recommended because Apple does not publish an acceptable internal battery-temperature limit.";
+    [alert addButtonWithTitle:@"Set Cutoff"];
+    [alert addButtonWithTitle:@"Cancel"];
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 220, 24)];
+    field.stringValue = [NSString stringWithFormat:@"%.1f", batteryCutoffC];
+    alert.accessoryView = field;
+    [alert.window setInitialFirstResponder:field];
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+
+    double value = field.doubleValue;
+    if (!IsConfigurableCutoff(value)) {
+        NSAlert *invalid = [[NSAlert alloc] init];
+        invalid.messageText = @"Invalid cutoff";
+        invalid.informativeText = @"Choose a temperature between 35°C and 50°C.";
+        [invalid runModal];
+        return;
+    }
+    if (value > 45.0) {
+        NSAlert *warning = [[NSAlert alloc] init];
+        warning.alertStyle = NSAlertStyleCritical;
+        warning.messageText = @"Use a cutoff above 45°C?";
+        warning.informativeText = @"This is a deliberately permissive setting. Apple warns that heat and charging temperature accelerate battery aging, but does not publish a safe internal battery-temperature limit.";
+        [warning addButtonWithTitle:@"Use This Value"];
+        [warning addButtonWithTitle:@"Cancel"];
+        if ([warning runModal] != NSAlertFirstButtonReturn) return;
+    }
+    StoreCutoff(value, @"custom menu setting");
+}
 @end
 
 static void SetupMenuBar(void) {
@@ -132,6 +208,22 @@ static void SetupMenuBar(void) {
     batteryMenuItem = [[NSMenuItem alloc] initWithTitle:@"Battery temperature: checking…" action:nil keyEquivalent:@""];
     batteryMenuItem.enabled = NO;
     [menu addItem:batteryMenuItem];
+    cutoffMenuItem = [[NSMenuItem alloc] initWithTitle:@"Battery cutoff: 40.0°C" action:nil keyEquivalent:@""];
+    NSMenu *cutoffMenu = [[NSMenu alloc] initWithTitle:@"Battery cutoff"];
+    for (NSNumber *preset in @[@40.0, @42.0, @45.0]) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"%.0f°C", preset.doubleValue]
+                                                      action:@selector(setPresetCutoff:)
+                                               keyEquivalent:@""];
+        item.target = menuController;
+        item.representedObject = preset;
+        [cutoffMenu addItem:item];
+    }
+    [cutoffMenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *custom = [[NSMenuItem alloc] initWithTitle:@"Custom…" action:@selector(setCustomCutoff:) keyEquivalent:@""];
+    custom.target = menuController;
+    [cutoffMenu addItem:custom];
+    cutoffMenuItem.submenu = cutoffMenu;
+    [menu addItem:cutoffMenuItem];
     [menu addItem:[NSMenuItem separatorItem]];
     latchMenuItem = [[NSMenuItem alloc] initWithTitle:@"Trip latch: armed" action:@selector(resetLatch:) keyEquivalent:@""];
     latchMenuItem.target = menuController;
@@ -141,6 +233,7 @@ static void SetupMenuBar(void) {
     logs.target = menuController;
     [menu addItem:logs];
     statusItem.menu = menu;
+    UpdateCutoffMenu();
 }
 
 static NSNumber *BatteryTemperatureC(void) {
@@ -217,6 +310,7 @@ static NSProcessInfoThermalState ParseThermalState(NSString *value) {
 
 static void CheckSensors(void) {
     @autoreleasepool {
+        ReloadStoredCutoff();
         NSProcessInfoThermalState state = simulatedThermalState >= 0
             ? (NSProcessInfoThermalState)simulatedThermalState
             : [NSProcessInfo processInfo].thermalState;
@@ -241,6 +335,7 @@ int main(int argc, const char *argv[]) {
             NSString *argument = arguments[index];
             if ([argument isEqualToString:@"--battery-cutoff-c"] && ++index < arguments.count) {
                 batteryCutoffC = [arguments[index] doubleValue];
+                commandLineCutoffSpecified = YES;
             } else if ([argument isEqualToString:@"--poll-seconds"] && ++index < arguments.count) {
                 pollSeconds = [arguments[index] doubleValue];
             } else if ([argument isEqualToString:@"--once"]) {
@@ -260,6 +355,8 @@ int main(int argc, const char *argv[]) {
         }
 
         NSURL *home = [NSURL fileURLWithPath:NSHomeDirectory() isDirectory:YES];
+        settings = [[NSUserDefaults alloc] initWithSuiteName:settingsDomain];
+        ReloadStoredCutoff();
         tripLatch = [home URLByAppendingPathComponent:@"Library/Application Support/AmphetamineThermalGuard/tripped"];
         if ([[NSFileManager defaultManager] fileExistsAtPath:tripLatch.path] && !ignoreTripLatch) {
             Log([NSString stringWithFormat:@"Trip latch exists at %@; guard remains stopped until reset", tripLatch.path]);

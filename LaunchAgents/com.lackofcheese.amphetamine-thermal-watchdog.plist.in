@@ -7,8 +7,6 @@
     <key>ProgramArguments</key>
     <array>
         <string>@HOME@/.local/bin/amphetamine-thermal-watchdog</string>
-        <string>--battery-cutoff-c</string>
-        <string>40</string>
         <string>--poll-seconds</string>
         <string>15</string>
     </array>

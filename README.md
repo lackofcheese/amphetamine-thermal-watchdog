@@ -31,6 +31,27 @@ These defaults are a secondary safety mechanism, not permission to operate a
 MacBook inside a bag or another poorly ventilated enclosure. Software can
 fail, permissions can change, and hardware damage remains possible.
 
+## Configure the battery cutoff
+
+Choose **Battery cutoff** from the thermometer menu. The menu provides 40, 42,
+and 45 °C presets plus a custom range from 35 to 50 °C. The choice is saved and
+takes effect on the next sensor sample, including after a restart.
+
+The same setting is available from Terminal:
+
+```sh
+amphetamine-thermal-watchdogctl cutoff       # show the current setting
+amphetamine-thermal-watchdogctl cutoff 42    # save a new setting
+```
+
+The 40 °C default is deliberately conservative. Values above 45 °C show a
+warning. A configurable maximum of 50 °C does **not** mean that 50 °C is a
+known-safe internal battery temperature: Apple publishes an ambient operating
+range and warns that elevated charging temperatures can shorten battery life,
+but does not publish a safe internal battery-temperature cutoff. See Apple's
+[temperature guidance](https://support.apple.com/en-us/102336) and
+[battery charging guidance](https://support.apple.com/en-euro/102589).
+
 ## Requirements
 
 - macOS 11 or newer
@@ -87,6 +108,8 @@ amphetamine-thermal-watchdogctl logs
 amphetamine-thermal-watchdogctl logs 100
 amphetamine-thermal-watchdogctl test
 amphetamine-thermal-watchdogctl reset
+amphetamine-thermal-watchdogctl cutoff
+amphetamine-thermal-watchdogctl cutoff 42
 ```
 
 After a real trip, allow the Mac to cool before running `reset`.

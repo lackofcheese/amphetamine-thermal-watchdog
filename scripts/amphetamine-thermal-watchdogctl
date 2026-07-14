@@ -6,6 +6,14 @@ domain="gui/$(id -u)"
 binary="$HOME/.local/bin/amphetamine-thermal-watchdog"
 latch="$HOME/Library/Application Support/AmphetamineThermalGuard/tripped"
 log="$HOME/Library/Logs/AmphetamineThermalWatchdog.log"
+settings_domain="com.lackofcheese.amphetamine-thermal-watchdog"
+settings_key="BatteryCutoffC"
+
+valid_cutoff() {
+  local value="$1"
+  [[ "$value" =~ '^[0-9]+([.][0-9]+)?$' ]] || return 1
+  /usr/bin/awk -v value="$value" 'BEGIN { exit !(value >= 35 && value <= 50) }'
+}
 
 case "${1:-status}" in
   status)
@@ -30,8 +38,26 @@ case "${1:-status}" in
   logs)
     tail -n "${2:-30}" "$log"
     ;;
+  cutoff)
+    if (( $# == 1 )); then
+      value="$(defaults read "$settings_domain" "$settings_key" 2>/dev/null || echo 40)"
+      printf 'Battery cutoff: %.1f°C\n' "$value"
+      exit 0
+    fi
+    if (( $# != 2 )) || ! valid_cutoff "$2"; then
+      echo "Cutoff must be a number from 35 to 50 degrees Celsius." >&2
+      exit 2
+    fi
+    value="$2"
+    defaults write "$settings_domain" "$settings_key" -float "$value"
+    printf 'Battery cutoff saved: %.1f°C\n' "$value"
+    if /usr/bin/awk -v value="$value" 'BEGIN { exit !(value > 45) }'; then
+      echo "WARNING: Apple does not publish a safe internal battery-temperature limit; values above 45°C are deliberately permissive."
+    fi
+    echo "A running watchdog will use the new value within 15 seconds."
+    ;;
   *)
-    echo "Usage: $0 {status|reset|test|logs [lines]}" >&2
+    echo "Usage: $0 {status|reset|test|logs [lines]|cutoff [35-50]}" >&2
     exit 2
     ;;
 esac
